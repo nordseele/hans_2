@@ -23,6 +23,7 @@
         "stdlib.h": "c",
         "cyw43_arch.h": "c",
         "udp.h": "c",
-        "dhcpserver.h": "c"
+        "dhcpserver.h": "c",
+        "sockets.h": "c"
     }
 }
