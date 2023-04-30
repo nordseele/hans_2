@@ -11,9 +11,13 @@
 #include "lwip/pbuf.h"
 #include "lwip/sockets.h"
 
+/* Debug */
+#define DEBUG 1
+
 /* I2c pins on Pico */
 #define I2C_SDA_PIN 8
 #define I2C_SCL_PIN 9
+#define I2C_PORT i2c0
 
 // Define the UDP port to listen on
 #define UDP_PORT 9301
@@ -32,97 +36,146 @@ Module_info* retrieve_module(char* slice_module_name) {
   return NULL;
 }
 
-II_command* retrieve_cmd(Module_info* module_info, char* command) {
+II_command* retrieve_cmd(Module_info* module_info, char* module_command) {
   int i;
   for(i = 0; i < module_info->number_of_cmd; i++) {
-    if(strcmp(module_info->cmd_set[i].name, command) == 0) {
+    if(strcmp(module_info->cmd_set[i].name, module_command) == 0) {
       return &module_info->cmd_set[i];
     }
   }
   return NULL;
 }
 
-
-// add something to check the max number of ports
-void parseData(char packet[]) {
-
-  // parse and check data received over OSC. Prepare data that will be sent over i2c.
-  char *strtokIndex;
-  char *slice_module_name = NULL;
-  char *slice_module_command = NULL;
-  char *module_port = NULL;
-  char *module_command_value = NULL;
-  char limit[] = "/";
-  char packet_copy[256];
-  II_command *final;
-  Module_info *ii_module;
-
-/*
-
-Check max port number with the help of module_info !!
-
-/////////////
-/////////////
-/////////////
-/////////////
-/////////////
-/////////////
-*/
-
-
-  // Make a copy of the input string
-  strncpy(packet_copy, packet, sizeof(packet_copy));
-
-  if (packet_copy[0] == '/') {
-    slice_module_name = strtok_r(packet_copy, limit, &strtokIndex);
-    if (slice_module_name != NULL) {
-        ii_module = retrieve_module(slice_module_name);
-
-        slice_module_command = strtok_r(NULL, limit, &strtokIndex);
-        final = retrieve_cmd(ii_module, slice_module_command);
-        if(final == NULL) {
-          // handle error here
-          printf("Command unknown\n");
-          return;
-
-        } else {
-          printf("Command received is %s\n", final->name);
-         module_port = strtok_r(NULL, limit, &strtokIndex);
-          if (module_port != NULL) { 
-              int i = atoi(module_port);
-              if (i == 0 && module_port[0] != '0') {
-                  printf("module port is not a number\n");
-                  return;
-              }
-              printf("module port is %d\n", i);
-          } else {
-              printf("no module port provided\n");
-              return;
-          }
-        int arg_count = 0;
-          for (int i = 0; i < 2; i++) {
-            if (final->args[i].name[0] != '\0') {
-              arg_count++;
-            }
-          }
-          if (arg_count > 1) {
-            module_command_value = strtok_r(NULL, limit, &strtokIndex);
-            if (module_command_value != NULL) {
-              char *endptr;
-              long int command_value = strtol(module_command_value, &endptr, 10);
-              if (endptr == module_command_value || *endptr != '\0' || command_value < 0 || command_value > 32767) {
-                printf("Invalid command value: %s\n", module_command_value);
-                return;
-              }
-              printf("Command value received is %ld\n", command_value);
-            } else {
-              printf("Missing value\n");
-              return;
-            }
-          }
-        }
+int retrieve_module_address(Module_info *module_info, int module_port) {
+    if (module_port < 0 || module_port >= module_info->max_ports) {
+        printf("Invalid module port: %d\n", module_port);
+        return 0;
     }
-  }
+
+    if (module_info == &er301_info) {
+        int address = module_info->addresses[module_port / 100];
+        #ifdef DEBUG
+            printf("Retrieved ER-301 module address: %d\n", address);
+        #endif
+        return address;
+    }
+    else if (module_info == &txo_info) {
+        int address = module_info->addresses[module_port / 8];
+        #ifdef DEBUG
+            printf("Retrieved TXO module address: %d\n", address);
+        #endif
+        return address;
+    }
+    else {
+        // add support for more modules here
+        return 0;
+    }
+}
+
+void send_i2c_msg(Module_info* module_info, II_command* ii_cmd, int module_port, long int cmd_value) {
+    int address = retrieve_module_address(module_info, module_port);
+
+    // Construct the I2C message buffer: the command may require a value
+    uint8_t i2c_buf[6];
+    i2c_buf[0] = address;
+    i2c_buf[1] = ii_cmd->command_number;
+    i2c_buf[2] = module_port;
+    if (ii_cmd->arg_count > 1) {
+        i2c_buf[3] = (cmd_value >> 8) & 0xFF;  // high byte
+        i2c_buf[4] = cmd_value & 0xFF;         // low byte
+        size_t buf_len = 5;
+    } else {
+        size_t buf_len = 3;
+    }
+
+    // Send the I2C message
+
+    // Print debug information
+    char buffer[256];
+    sprintf(buffer, "Module: %s, Command: %x, Port: %d, Value: %ld\n", module_info->name, ii_cmd->command_number, module_port, cmd_value);
+    printf(buffer);
+}
+
+void parseData(char packet[]) {
+    const char *delim = "/";
+    char packet_copy[256];
+    char buffer[256];
+    strncpy(packet_copy, packet, sizeof(packet_copy));
+
+    Module_info *module_info = NULL;
+    II_command *ii_cmd = NULL;
+    int module_port = -1;
+
+    char *module_name = strtok(packet_copy, delim);
+    if (module_name == NULL) {
+        printf("Invalid module name: %s\n", packet);
+        return;
+    }
+
+    module_info = retrieve_module(module_name);
+    if (module_info == NULL) {
+        printf("Module not found: %s\n", module_name);
+        return;
+    }
+
+    char *cmd_name = strtok(NULL, delim);
+    if (cmd_name == NULL) {
+        printf("Missing command name\n");
+        return;
+    }
+
+    ii_cmd = retrieve_cmd(module_info, cmd_name);
+    if (ii_cmd == NULL) {
+        printf("Command not found: %s\n", cmd_name);
+        return;
+    }
+
+    char *module_port_str = strtok(NULL, delim);
+    if (module_port_str == NULL) {
+        printf("Missing module port\n");
+        return;
+    }
+
+    module_port = atoi(module_port_str);
+    if (module_port == 0 && module_port_str[0] != '0') {
+        printf("Invalid module port: %s\n", module_port_str);
+        return;
+    }
+
+    if (module_port >= module_info->max_ports) {
+        printf("Module port out of range: %d\n", module_port);
+        return;
+    }
+
+    int address = retrieve_module_address(module_info, module_port);
+
+    if (ii_cmd->arg_count > 1) {
+        char *cmd_value_str = strtok(NULL, delim);
+        if (cmd_value_str == NULL) {
+            printf("Missing command value\n");
+            return;
+        }
+
+        char *endptr;
+        long int cmd_value = strtol(cmd_value_str, &endptr, 10);
+        if (endptr == cmd_value_str || *endptr != '\0' || cmd_value < 0 || cmd_value > 32767) {
+            printf("Invalid command value: %s\n", cmd_value_str);
+            return;
+        }
+
+        // Construct the I2C message buffer: the command requires a value
+
+
+    } else {
+
+        // [device address, command number, argument byte 1, argument byte 2]
+
+        // Construct the I2C message buffer: the command does not require a value
+    }
+
+    #ifdef DEBUG
+        printf("%s", buffer);
+    #endif
 }
 
 
