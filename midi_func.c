@@ -25,7 +25,6 @@ void parse_midi_command(uint8_t buf[]) {
 void map_midi_note_with_value(midi_message_t message, int starting_port, int length, int starting_note, const char* module_name, const char* command_name, int command_value) {
     int event_range_start = starting_note;
     int event_range_end = starting_note + length - 1;
-
     if (message.param1 >= event_range_start && message.param1 <= event_range_end) {
         int index = message.param1 - event_range_start + starting_port;
         char packet_str[256];
@@ -37,7 +36,6 @@ void map_midi_note_with_value(midi_message_t message, int starting_port, int len
 void map_midi_note_without_value(midi_message_t message, int starting_port, int length, int starting_note, const char* module_name, const char* command_name) {
     int event_range_start = starting_note;
     int event_range_end = starting_note + length - 1;
-
     if (message.param1 >= event_range_start && message.param1 <= event_range_end) {
         int index = message.param1 - event_range_start + starting_port;
         char packet_str[256];
@@ -49,7 +47,6 @@ void map_midi_note_without_value(midi_message_t message, int starting_port, int 
 void map_midi_control_change(midi_message_t message, int starting_port, int length, int starting_control, const char* module_name, const char* command_name) {
     int event_range_start = starting_control;
     int event_range_end = starting_control + length - 1;
-
     if (message.param1 >= event_range_start && message.param1 <= event_range_end) {
         int index = message.param1 - event_range_start + starting_port;
         int value = (message.param2 * 32767) / 127; // Map value from 0-127 to 0-32767
@@ -58,6 +55,32 @@ void map_midi_control_change(midi_message_t message, int starting_port, int leng
         parseData(packet_str);
     }
 }
+
+// MIDI Routing Function
+// This function routes MIDI messages based on the channel and operation type.
+// For each channel-specific operation, the appropriate map function is called
+// to map the MIDI message to a specific parameter on a module (e.g., ER-301).
+//
+// Functions:
+// 1. map_midi_note_with_value: Maps a MIDI note message to a specific port and value on the module.
+//    Usage: map_midi_note_with_value(message, starting_port, length, starting_note, module_name, command_name, command_value);
+//
+// 2. map_midi_note_without_value: Maps a MIDI note message to a specific port on the module. 
+//    Note On messages are mapped to a value of 1, and Note Off messages are mapped to a value of 0.
+//    Usage: map_midi_note_without_value(message, starting_port, length, starting_note, module_name, command_name);
+//
+// 3. map_midi_control_change: Maps a MIDI control change message to a specific port and value on the module.
+//    The control change value is mapped from the MIDI range (0-127) to the desired range (0-32767).
+//    Usage: map_midi_control_change(message, starting_port, length, starting_control, module_name, command_name);
+//
+// Parameters:
+// - message: The MIDI message to be routed.
+// - starting_port: The port number to start mapping MIDI notes or control changes.
+// - length: The number of ports to map.
+// - starting_note: The MIDI note number where mapping should start (used in note mapping functions).
+// - module_name: The name of the module to which the MIDI messages should be sent (e.g., "er301", "txo").
+// - command_name: The command name for the module (e.g., "tr", "tr_pulse", "cv", etc.).
+// - (map_midi_note_with_value) command_value: The value to map to the module.
 
 
 void route_midi_message(midi_message_t message) {

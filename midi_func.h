@@ -4,11 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include <stdarg.h>
 
 #define MIDI_BUFFER_SIZE 3 // Set the buffer size to accommodate one MIDI message
-#define IS_NOTE_IN_RANGE(note, start, end) ((note) >= (start) && (note) <= (end))
-#define MAP_NOTE_TO_DEST(note, src_start, dest_start) ((note) - (src_start) + (dest_start))
 
 extern uint8_t midi_dev_addr;
 extern bool display_refresh;
@@ -21,7 +18,7 @@ typedef enum {
     PROGRAM_CHANGE = 0xC0,
     MONO_KEY_PRESSURE = 0xD0,
     PITCH_BEND = 0xE0,
-    // Add more message types as needed
+    // Add more message types as needed, see list below.
 } midi_message_type_t;
 
 typedef struct {

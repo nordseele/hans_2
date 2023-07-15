@@ -1,3 +1,13 @@
+/*
+    Hans 2 converts OSC UDP and serial MIDI to II and sends that over I2C to ER-301 and TXo. 
+    Version 2 runs on RPI PICO W and is programmed in C. This is the first draft. 
+    Hardware and enclosure exist, not yet available, not open sourced. 
+    Personal project, work in progress.
+    Version: 0.1
+    Author: M.BUDDE
+*/
+
+
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
@@ -16,7 +26,7 @@
 #include "helpers.h"
 
 /* Debug */
-#define DEBUG 1
+#define DEBUG 0
 
 /* I2c pins on Pico */
 #define I2C_SDA_PIN 12
@@ -87,6 +97,7 @@ void send_i2c_message(Module_info* module_info, II_command* ii_cmd, int module_p
     // Define the I2C message buffer and buffer length variables
     uint8_t i2c_buf[6];
     size_t buf_len;
+    module_port--;
 
     if (ii_cmd->arg_count > 1) {
         // The command requires a value
