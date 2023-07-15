@@ -7,7 +7,6 @@
     Author: M.BUDDE
 */
 
-
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
@@ -238,7 +237,6 @@ int main() {
     gpio_set_function(UART_RX_2_PIN, GPIO_FUNC_UART);
     uart_set_hw_flow(UART_ID_2, false, false);
 
-
     stdio_init_all();
 
     cyw43_arch_init();
@@ -268,12 +266,10 @@ int main() {
     // Action!
     while (1)
     {
-
         /*  
             listen to OSC over UDP
             ****** DONE ELSEWHERE *
         */
-
 
         /* listen to MIDI over UART */
         while (uart_is_readable(UART_ID_2)) {
@@ -287,7 +283,6 @@ int main() {
             // Call the MIDI message handling function
             parse_midi_command(midi_bytes);
         }
-
     }
 
     // And that's a wrap!
