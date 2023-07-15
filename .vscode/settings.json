@@ -19,11 +19,15 @@
     "cmake.buildBeforeRun": true,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
+        "*.c": "c",
         "gpio.h": "c",
         "stdlib.h": "c",
         "cyw43_arch.h": "c",
         "udp.h": "c",
         "dhcpserver.h": "c",
-        "sockets.h": "c"
+        "sockets.h": "c",
+        "midi_func.h": "c",
+        "helpers.h": "c",
+        "stdio.h": "c"
     }
 }
