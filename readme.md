@@ -1,4 +1,5 @@
-![Hans 2](docs/hans_2.jpeg)
+![Hans 2 prototype and prototype boards](docs/hans_2.jpeg)
+_Prototypes of hans 2 for Raspberry Pi Pico W_
 
 ------
 
