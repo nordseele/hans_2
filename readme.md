@@ -11,5 +11,9 @@ Support for MIDI over USB and BLE tba - Version 2 of Hans now runs on RPI PICO W
 
 ##### _Version: 0.1_
 
+-----
 
-
+#### Roadmap: 
+- complete mapping
+- OTA updates
+- tbd
