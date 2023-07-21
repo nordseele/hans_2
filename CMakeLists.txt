@@ -27,10 +27,13 @@ target_include_directories(${target_proj} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/dnsserver
 )
 
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pio_midi_uart_lib)
+
 target_link_options(${target_proj} PRIVATE -Xlinker --print-memory-usage)
-target_compile_options(${target_proj} PRIVATE -Wall -Wextra -DCFG_TUSB_DEBUG=1)
-target_link_libraries(${target_proj}  pico_stdlib  hardware_i2c pico_cyw43_arch_lwip_threadsafe_background)
+target_compile_options(${target_proj} PRIVATE -Wall -Wextra -DCFG_TUSB_DEBUG=0)
+target_link_libraries(${target_proj} pico_stdlib pio_midi_uart_lib hardware_i2c pico_cyw43_arch_lwip_threadsafe_background)
 pico_add_extra_outputs(${target_proj})
+
 
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 pico_enable_stdio_uart(${PROJECT_NAME} 0)

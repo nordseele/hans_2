@@ -13,7 +13,10 @@
 #include <string.h>
 #include "pico/binary_info.h"
 #include "hardware/i2c.h"
+#include "hardware/pio.h"
+#include "hardware/dma.h"
 #include "hardware/uart.h"
+#include "hardware/irq.h"
 #include "ii.h"
 #include <stdarg.h>
 #include "dhcpserver.h"
@@ -23,9 +26,10 @@
 #include "lwip/sockets.h"
 #include "midi_func.h"
 #include "helpers.h"
+#include "pio_midi_uart_lib.h"
 
 /* Debug */
-#define DEBUG 0
+#define DEBUG 1
 
 /* I2c pins on Pico */
 #define I2C_SDA_PIN 12
@@ -42,14 +46,23 @@
 #define UART_RX_PIN 9
 
 /* MIDI */
-#define UART_ID_2 uart0
-#define BAUD_RATE_2 31250
-#define UART_TX_2_PIN 0
-#define UART_RX_2_PIN 1
+#define MIDI_TX_PIN 0
+#define MIDI_RX_PIN 1
+
+// Define MIDI message types
+#define MIDI_NOTE_ON 0x90
+#define MIDI_NOTE_OFF 0x80
+#define MIDI_CONTROL_CHANGE 0xB0
+
+// MIDI message buffer and index
+#define MIDI_MESSAGE_BUFFER_SIZE 8
+uint8_t midi_message_buffer[MIDI_MESSAGE_BUFFER_SIZE];
+uint8_t midi_message_index = 0;
+
+static void *midi_uart_instance;
 
 // Define the maximum length of incoming OSC messages
 #define MAX_OSC_LEN 256
-
 
 Module_info* retrieve_module(char* slice_module_name) {
   if(strcmp(slice_module_name, "er301") == 0) {
@@ -117,17 +130,6 @@ void send_i2c_message(Module_info* module_info, II_command* ii_cmd, int module_p
         i2c_buf[1] = module_port;
         buf_len = 2;
     }
-
-    #ifdef DEBUG
-        // Print debug information
-        char buffer[256];
-        if (buf_len == 4) {
-            sprintf(buffer, "Module: %s, Command: %x, Port: %d, Value: %ld\n", module_info->name, ii_cmd->command_number, module_port, cmd_value);
-        } else {
-            sprintf(buffer, "Module: %s, Command: %x, Port: %d\n", module_info->name, ii_cmd->command_number, module_port);
-        }
-        printy(buffer);
-    #endif
 
     // Send the I2C message
     i2c_write_blocking(I2C_PORT, address, i2c_buf, buf_len, false);
@@ -217,6 +219,27 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, cons
     pbuf_free(p);
 }
 
+// Function to print the MIDI message buffer using uart_puts
+void printMidiMessageBuffer() {
+    char buffer[32]; // Buffer to hold the formatted hexadecimal string
+    uint8_t message_length = 0;
+    
+    // Calculate the MIDI message length based on the status byte
+    uint8_t message_type = midi_message_buffer[0] & 0xF0;
+    if (message_type == MIDI_NOTE_ON || message_type == MIDI_NOTE_OFF || message_type == MIDI_CONTROL_CHANGE) {
+        message_length = 3; // These messages have 3 bytes in total
+    }
+
+    // Print the bytes of the MIDI message buffer as hexadecimal
+    for (uint8_t i = 0; i < message_length; i++) {
+        sprintf(buffer, "%02X ", midi_message_buffer[i]);
+        uart_puts(UART_ID, buffer);
+    }
+    
+    // Print a new line to separate messages
+    uart_puts(UART_ID, "\r\n");
+}
+
 int main() {
 
     /* Initialize i2c */ 
@@ -231,12 +254,11 @@ int main() {
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
-    /* Initialize UART (MIDI on UART 0)*/
-    uart_init(UART_ID_2, BAUD_RATE_2);
-    gpio_set_function(UART_TX_2_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_2_PIN, GPIO_FUNC_UART);
-    uart_set_hw_flow(UART_ID_2, false, false);
-
+    midi_uart_instance = pio_midi_uart_create(MIDI_TX_PIN, MIDI_RX_PIN);
+    if (midi_uart_instance  == NULL) {
+        printy("Error creating MIDI UART instance.\n");
+        return 1;
+    }
     stdio_init_all();
 
     cyw43_arch_init();
@@ -263,29 +285,46 @@ int main() {
 
     printy("\rstarting hans OSC\n");
     
-    // Action!
-    while (1)
-    {
-        /*  
-            listen to OSC over UDP
-            ****** DONE ELSEWHERE *
-        */
+ // Buffer to hold received MIDI data
+    uint8_t received_data[16];
 
-        /* listen to MIDI over UART */
-        while (uart_is_readable(UART_ID_2)) {
-            uint8_t status = uart_getc(UART_ID_2);
-            uint8_t data1 = uart_getc(UART_ID_2);
-            uint8_t data2 = uart_getc(UART_ID_2);
+    while (1) {
+        // Poll the MIDI UART receive buffer
+        uint8_t nread = pio_midi_uart_poll_rx_buffer(midi_uart_instance, received_data, sizeof(received_data));
+        if (nread > 0) {
+            // Process each MIDI message in the received buffer
+            for (uint8_t i = 0; i < nread; i++) {
+                uint8_t data_byte = received_data[i];
 
-            // Create a temporary buffer to hold the MIDI bytes
-            uint8_t midi_bytes[3] = { status, data1, data2 };
+                // Check if it's the start of a new MIDI message
+                if (data_byte >= 0x80 && data_byte <= 0xEF) {
+                    // Start of a new MIDI message, reset the buffer index
+                    midi_message_index = 0;
+                    midi_message_buffer[midi_message_index++] = data_byte;
+                } else if (midi_message_index > 0) {
+                    // Continue collecting bytes of the current MIDI message
+                    midi_message_buffer[midi_message_index++] = data_byte;
 
-            // Call the MIDI message handling function
-            parse_midi_command(midi_bytes);
+                    // Check if we have a complete MIDI message
+                    uint8_t message_type = midi_message_buffer[0] & 0xF0;
+                    uint8_t message_length = 0;
+
+                    if (message_type == MIDI_NOTE_ON || message_type == MIDI_NOTE_OFF || message_type == MIDI_CONTROL_CHANGE) {
+                        message_length = 3; // These messages have 3 bytes in total
+                    }
+
+                    if (midi_message_index == message_length) {
+                        // We have a complete MIDI message, pass it to the parser
+                        parse_midi_command(midi_message_buffer);
+                        // Reset the buffer index for the next message
+                        midi_message_index = 0;
+                    }
+                }
+            }
         }
+    sleep_us(10);
     }
 
-    // And that's a wrap!
     udp_remove(pcb);
     cyw43_arch_deinit();
 

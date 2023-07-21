@@ -28,6 +28,7 @@
         "sockets.h": "c",
         "midi_func.h": "c",
         "helpers.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "midi_receiver.pio.h": "c"
     }
 }
