@@ -1,5 +1,5 @@
 /*
-    Hans 2 converts OSC UDP and serial MIDI to II and sends that over I2C to ER-301 and TXo. 
+    Hans(2): OSC UDP + serial MIDI -> II over I2C for ER-301 and TXo. 
     Version 2 runs on RPI PICO W and is programmed in C. This is the first draft. 
     Personal project, work in progress.
     Version: 0.2
